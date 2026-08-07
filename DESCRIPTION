@@ -3,7 +3,7 @@ Type: Package
 Title: Validation of Analytical Calibration Curves
 Version: 0.1.0
 Authors@R: 
-    person(given = "Isaquiel", family = "Silva", role = c("aut", "cre"),
+    person(given = "Isaque Wilkson de Sousa", family = "Brandão", role = c("aut", "cre"),
            email = "isaquebrand@gmail.com")
 Description: Provides transparent tools for fitting and evaluating analytical
     calibration curves. Ordinary and weighted least squares fits are supported,
