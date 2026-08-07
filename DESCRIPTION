@@ -1,0 +1,30 @@
+Package: ValCurvaR
+Type: Package
+Title: Validation of Analytical Calibration Curves
+Version: 0.1.0
+Authors@R: 
+    person(given = "Isaquiel", family = "Silva", role = c("aut", "cre"),
+           email = "isaquebrand@gmail.com")
+Description: Provides transparent tools for fitting and evaluating analytical
+    calibration curves. Ordinary and weighted least squares fits are supported,
+    together with lack-of-fit, heteroscedasticity and influence diagnostics,
+    back-calculation, prediction uncertainty and publication-ready base graphics.
+    The workflow is designed to support validation studies rather than rely on
+    a single goodness-of-fit statistic.
+License: MIT + file LICENSE
+URL: https://github.com/isaquebrand/ValCurvaR
+BugReports: https://github.com/isaquebrand/ValCurvaR/issues
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+Imports:
+    graphics,
+    grDevices,
+    stats
+Suggests:
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0

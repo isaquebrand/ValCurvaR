@@ -1,0 +1,94 @@
+---
+title: "Eurachem A5.2: OLS, WLS e diagnosticos da curva analitica"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Eurachem A5.2: OLS, WLS e diagnosticos da curva analitica}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(ValCurvaR)
+```
+
+## Objetivo
+
+Esta vinheta aplica o fluxo do `ValCurvaR` aos dados da Tabela A5.2 do guia
+Eurachem/CITAC. Os dados sao mantidos no formato longo: cada uma das tres
+replicatas continua disponivel para avaliar a variabilidade e a falta de ajuste.
+
+O exemplo demonstra a analise; ele nao estabelece, por si so, um criterio de
+aceitacao universal para uma tecnica ou matriz.
+
+## Dados e ajuste inicial
+
+```{r dados}
+dados <- dados_eurachem_a52()
+curva <- validar_curva(dados, concentracao_mg_L, absorbancia, replica)
+
+ols <- ajustar_curva(curva, metodo = "ols")
+wls <- ajustar_curva(curva, metodo = "wls", pesos = "variancia_nivel")
+
+ols
+wls
+```
+
+## Variabilidade, ajuste e influencia
+
+```{r diagnosticos}
+diag_ols <- diagnosticar_curva(ols)
+diag_ols$resumo_niveis
+diag_ols$homocedasticidade
+diag_ols$falta_ajuste
+diag_ols$mandel
+diag_ols$avisos
+```
+
+O teste de falta de ajuste usa a variacao entre replicatas para separar erro
+puro de desvio da reta. Portanto, ele deixa de estar disponivel quando os dados
+ja foram agregados por nivel.
+
+## Comparacao entre OLS e WLS
+
+```{r comparacao}
+comparar_modelos(ols, wls)
+```
+
+O maior `R2` nao decide qual modelo deve ser usado. A comparacao deve incluir o
+padrao dos residuos, a justificativa dos pesos e o desempenho de retrocalculo na
+faixa de uso pretendida.
+
+```{r graficos, fig.width = 8, fig.height = 7}
+painel_calibracao(wls)
+```
+
+## Retrocálculo
+
+```{r retrocalculo}
+retrocalcular_concentracao(wls, sinal = c(0.133, 0.180), k = 1)
+```
+
+O retrocalculo usa o modelo `x = (y - a) / b` e a propagacao GUM conserva o
+termo de covariancia entre `a` e `b`. Quando `u_sinal` nao e informado, o
+pacote usa o desvio-padrao residual dividido por `sqrt(k)` como estimativa
+derivada dos dados. A decisao metrologica final deve considerar as demais
+fontes de incerteza relevantes ao procedimento.
+
+## Criterios e rastreabilidade da decisao
+
+Os limites sao definidos pelo usuario, pois nao ha um unico limite de CV ou
+erro relativo valido para todos os metodos e matrizes. O pacote registra tanto
+os criterios fornecidos como aqueles que permaneceram nao avaliados.
+
+```{r adequacao}
+avaliar_adequacao(
+  wls,
+  criterios = list(
+    cv_max_percentual = 10,
+    erro_relativo_retrocalculo_max_percentual = 10
+  )
+)
+
+relatorio_auditoria(wls, criterios = list(cv_max_percentual = 10))
+```
