@@ -22,8 +22,9 @@ tabela <- function(x, caption) {
   x <- as.data.frame(x, check.names=FALSE)
   rownames(x) <- NULL
   saida <- knitr::kable(x, format="latex", booktabs=FALSE, digits=4, row.names=FALSE,
-                         caption=caption)
-  knitr::asis_output(saida)
+                         caption=NULL)
+  knitr::asis_output(paste0("\\begin{center}\n\\textbf{", caption, "}\\\\[0.4em]\n",
+                            saida, "\n\\end{center}"))
 }
 decisao <- function(p, disponivel=TRUE) if (!isTRUE(disponivel) || !is.finite(p)) "Nao avaliado" else if (p < alpha) "Rejeitar H0" else "Nao rejeitar H0"
 teste <- function(nome, z, h0, finalidade, p=NULL) {
@@ -186,9 +187,3 @@ tabela(adequacao$retrocalculo_por_nivel,"Retrocalculo por nivel")
 ```{r incerteza, fig.cap='Incerteza da predicao inversa para diferentes numeros de replicatas. A legenda esta na lateral.'}
 grafico_incerteza_predicao(ajuste)
 ```
-
-# Conclusao
-
-`r adequacao$conclusao`
-
-Os resultados de cada teste devem ser interpretados conjuntamente com os graficos e com o conhecimento do metodo. Quando houver rejeicao de $H_0$ para heterocedasticidade, avaliar WLS ou outra estrategia de pesos tecnicamente justificada; para falta de ajuste ou Mandel, investigar reducao da faixa ou outro modelo; para residuos nao normais, dependencia ou observacoes influentes, revisar preparo de padroes, sequencia analitica, leitura instrumental e transcricao. Nenhuma dessas evidencias, isoladamente, determina exclusao automatica de observacoes.

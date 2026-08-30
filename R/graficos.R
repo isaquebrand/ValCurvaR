@@ -10,8 +10,6 @@
 #' @export
 grafico_calibracao <- function(ajuste, nivel = .95, ...) {
   if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
-  old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
-  graphics::par(mar = graphics::par("mar") + c(0, 0, 0, 3), xpd = NA)
   pal <- .valcurva_palette(); d <- ajuste$dados
   xs <- seq(min(d$.x), max(d$.x), length.out = 200)
   raw_pred <- stats::predict(ajuste$modelo, newdata = data.frame(.x = xs), se.fit = TRUE)
@@ -25,9 +23,9 @@ grafico_calibracao <- function(ajuste, nivel = .95, ...) {
   graphics::lines(xs, pred[, "lwr"], col = pal$band, lwd = 1.4, lty = 2)
   graphics::lines(xs, pred[, "upr"], col = pal$band, lwd = 1.4, lty = 2)
   co <- stats::coef(ajuste$modelo)
-  graphics::legend("topright", inset = c(.02, 0), bty = "n", cex = .65,
-    legend = c("Dados", "Centroide", sprintf("%s: y = %.4g + %.4g x", toupper(ajuste$metodo), co[1], co[2]),
-               sprintf("Limites inferior e superior de predicao %.0f%% (tracejados)", 100 * nivel)),
+  graphics::legend("topleft", bty = "n", cex = .82,
+    legend = c("Dados", "Centroide", sprintf("%s: y = %.5g + %.5g x", toupper(ajuste$metodo), co[1], co[2]),
+               sprintf("Limites de predicao %.0f%% (tracejados)", 100 * nivel)),
     col = c(pal$data, pal$data, pal$line, pal$band), pch = c(1, 3, NA, NA),
     lty = c(NA, NA, 1, 2), lwd = c(NA, NA, 2, 1.4))
   invisible(data.frame(concentracao = xs, ajuste = pred[, "fit"], inferior = pred[, "lwr"], superior = pred[, "upr"]))
@@ -39,8 +37,6 @@ grafico_calibracao <- function(ajuste, nivel = .95, ...) {
 #' @export
 grafico_variancia <- function(ajuste) {
   if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
-  old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
-  graphics::par(mar = graphics::par("mar") + c(0, 0, 0, 3), xpd = NA)
   s <- ajuste$diagnosticos$resumo_niveis; pal <- .valcurva_palette()
   ymax <- max(s$dp_sinal, na.rm = TRUE)
   graphics::plot(s$concentracao, s$dp_sinal, pch = 21, bg = "white", col = pal$data,
@@ -49,8 +45,6 @@ grafico_variancia <- function(ajuste) {
   graphics::arrows(s$concentracao, pmax(0, s$dp_sinal - 0.5 * s$dp_sinal), s$concentracao,
                    s$dp_sinal + 0.5 * s$dp_sinal, angle = 90, code = 3, length = .04, col = "#666666")
   if (sum(is.finite(s$dp_sinal)) >= 2L) graphics::abline(stats::lm(dp_sinal ~ concentracao, s), col = pal$data, lwd = 2)
-  graphics::legend("topright", inset = c(.02, 0), legend = c("DP por nivel", "Tendencia linear"),
-                   pch = c(21, NA), lty = c(NA, 1), col = c(pal$data, pal$data), bty = "n", cex = .8)
   invisible(s)
 }
 
@@ -60,16 +54,12 @@ grafico_variancia <- function(ajuste) {
 #' @export
 grafico_residuos <- function(ajuste) {
   if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
-  old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
-  graphics::par(mar = graphics::par("mar") + c(0, 0, 0, 3), xpd = NA)
   z <- ajuste$diagnosticos$influencia; pal <- .valcurva_palette()
   graphics::plot(z$concentracao, z$residuo_padronizado, pch = 19, col = pal$data,
                  xlab = "Concentracao", ylab = "Residuo padronizado")
   graphics::abline(h = 0, lty = 2, col = pal$zero)
   graphics::abline(h = c(-2, 2), lty = 3, col = "#888888")
   if (length(unique(z$concentracao)) >= 4L) graphics::lines(stats::lowess(z$concentracao, z$residuo_padronizado), col = pal$data, lty = 3, lwd = 2)
-  graphics::legend("topright", inset = c(.02, 0), legend = c("Residuos", "Zero", "Limites +/- 2", "Suavizacao"),
-                   pch = c(19, NA, NA, NA), lty = c(NA, 2, 3, 3), col = c(pal$data, pal$zero, "#888888", pal$data), bty = "n", cex = .8)
   invisible(z)
 }
 
@@ -83,8 +73,6 @@ grafico_residuos <- function(ajuste) {
 #' @export
 grafico_qq <- function(ajuste, nivel = .95, simulacoes = 999L, semente = NULL) {
   if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
-  old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
-  graphics::par(mar = graphics::par("mar") + c(0, 0, 0, 3), xpd = NA)
   if (!is.null(semente)) set.seed(semente)
   r <- sort(stats::rstandard(ajuste$modelo)); n <- length(r)
   if (n < 3L) .valcurva_abort("O grafico Q-Q requer ao menos tres residuos.")
@@ -97,8 +85,6 @@ grafico_qq <- function(ajuste, nivel = .95, simulacoes = 999L, semente = NULL) {
   graphics::lines(teorico, env[, 1], lty = 2, col = .valcurva_palette()$band)
   graphics::lines(teorico, env[, 2], lty = 2, col = .valcurva_palette()$band)
   graphics::abline(stats::lm(r ~ teorico), col = .valcurva_palette()$line, lwd = 2)
-  graphics::legend("topright", inset = c(.02, 0), legend = c("Residuos", "Envelope", "Reta"),
-                   pch = c(19, NA, NA), lty = c(NA, 2, 1), col = c(.valcurva_palette()$data, .valcurva_palette()$band, .valcurva_palette()$line), bty = "n", cex = .8)
   invisible(data.frame(quantil_teorico = teorico, residuo = r, envelope_inferior = env[, 1], envelope_superior = env[, 2]))
 }
 
@@ -110,13 +96,11 @@ grafico_influencia <- function(ajuste) {
   if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
   z <- ajuste$diagnosticos$influencia; n <- nrow(z); p <- length(stats::coef(ajuste$modelo))
   old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
-  graphics::par(mfrow = c(1, 2), mar = c(5, 4, 4, 5), xpd = NA)
+  graphics::par(mfrow = c(1, 2))
   graphics::plot(seq_len(n), z$cook, pch = 19, xlab = "Observacao", ylab = "Distancia de Cook")
   graphics::abline(h = 4 / n, lty = 2, col = .valcurva_palette()$band)
-  graphics::legend("topright", inset = c(-.07, 0), legend = c("Cook", "Limite 4/n"), pch = c(19, NA), lty = c(NA, 2), col = c("black", .valcurva_palette()$band), bty = "n", cex = .7)
   graphics::plot(seq_len(n), z$alavancagem, pch = 19, xlab = "Observacao", ylab = "Alavancagem")
   graphics::abline(h = 2 * p / n, lty = 2, col = .valcurva_palette()$band)
-  graphics::legend("topright", inset = c(-.07, 0), legend = c("Alavancagem", "Limite 2p/n"), pch = c(19, NA), lty = c(NA, 2), col = c("black", .valcurva_palette()$band), bty = "n", cex = .7)
   invisible(z)
 }
 
@@ -128,7 +112,7 @@ grafico_influencia <- function(ajuste) {
 grafico_incerteza_predicao <- function(ajuste, k = c(1, 2, 3, 4, 9, 16)) {
   if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
   old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
-  graphics::par(mar = graphics::par("mar") + c(0, 0, 0, 4), xpd = NA)
+  graphics::par(mar = graphics::par("mar") + c(0, 0, 2.2, 0), xpd = NA)
   d <- ajuste$dados; xs <- seq(min(d$.x), max(d$.x), length.out = 200); pal <- .valcurva_palette()
   cols <- grDevices::hcl.colors(length(k), "Dynamic")
   all <- do.call(rbind, lapply(k, function(ki) {
@@ -141,8 +125,8 @@ grafico_incerteza_predicao <- function(ajuste, k = c(1, 2, 3, 4, 9, 16)) {
   for (i in seq_along(k)) {
     z <- all[all$k == k[i], ]; graphics::lines(z$concentracao, z$u, col = cols[i], lwd = 2)
   }
-  graphics::legend("topright", inset = c(.02, 0), legend = paste0("K=", k),
-                   col = cols, lty = 1, lwd = 2, bty = "n", xpd = NA, cex = .8)
+  graphics::legend("top", inset = c(0, -0.32), legend = paste0("K=", k),
+                   col = cols, lty = 1, lwd = 2, bty = "n", ncol = min(3, length(k)), xpd = NA)
   invisible(all)
 }
 
