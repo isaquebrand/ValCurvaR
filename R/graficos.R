@@ -23,11 +23,11 @@ grafico_calibracao <- function(ajuste, nivel = .95, ...) {
   graphics::points(cent$.x, cent$.y, pch = 3, col = pal$data, lwd = 1.5)
   graphics::lines(xs, pred[, "fit"], col = pal$line, lwd = 2)
   graphics::lines(xs, pred[, "lwr"], col = pal$band, lwd = 1.4, lty = 2)
-  graphics::lines(xs, pred[, "upr"], col = pal$band, lwd = 1.4)
+  graphics::lines(xs, pred[, "upr"], col = pal$band, lwd = 1.4, lty = 2)
   co <- stats::coef(ajuste$modelo)
   graphics::legend("topright", inset = c(.02, 0), bty = "n", cex = .65,
     legend = c("Dados", "Centroide", sprintf("%s: y = %.4g + %.4g x", toupper(ajuste$metodo), co[1], co[2]),
-               sprintf("Limites de predicao %.0f%%", 100 * nivel)),
+               sprintf("Limites inferior e superior de predicao %.0f%% (tracejados)", 100 * nivel)),
     col = c(pal$data, pal$data, pal$line, pal$band), pch = c(1, 3, NA, NA),
     lty = c(NA, NA, 1, 2), lwd = c(NA, NA, 2, 1.4))
   invisible(data.frame(concentracao = xs, ajuste = pred[, "fit"], inferior = pred[, "lwr"], superior = pred[, "upr"]))

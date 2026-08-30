@@ -14,9 +14,17 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, fig.width=7.5, fig.height=4.8, fig.align="center")
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, fig.width=6.5, fig.height=4.2, fig.align="center")
 ajuste <- params$ajuste; stopifnot(inherits(ajuste, "valcurva_fit"))
 diag <- ajuste$diagnosticos; dados <- ajuste$dados; alpha <- 0.05
+## Tabelas sem indice, centralizadas e com no maximo quatro casas decimais.
+tabela <- function(x, caption) {
+  x <- as.data.frame(x, check.names=FALSE)
+  rownames(x) <- NULL
+  saida <- knitr::kable(x, format="latex", booktabs=FALSE, digits=4, row.names=FALSE,
+                         caption=caption)
+  knitr::asis_output(saida)
+}
 decisao <- function(p, disponivel=TRUE) if (!isTRUE(disponivel) || !is.finite(p)) "Nao avaliado" else if (p < alpha) "Rejeitar H0" else "Nao rejeitar H0"
 teste <- function(nome, z, h0, finalidade, p=NULL) {
   if (is.null(z) || identical(z$disponivel, FALSE)) return(data.frame(Teste=nome, `Hipotese nula (H0)`=h0, Finalidade=finalidade, Estatistica=NA_real_, `p-valor`=NA_real_, Decisao="Nao avaliado"))
@@ -29,12 +37,25 @@ homocedasticidade <- rbind(teste("Brown-Forsythe",diag$homocedasticidade,"as var
 independencia <- rbind(teste("Durbin-Watson",diag$independencia$durbin_watson,"nao ha autocorrelacao serial dos residuos","avaliar independencia dos residuos"),teste("Breusch-Godfrey",diag$independencia$breusch_godfrey,"nao ha autocorrelacao serial dos residuos","avaliar autocorrelacao de ordem maior"))
 linearidade <- rbind(teste("Falta de ajuste",diag$falta_ajuste,"o modelo linear representa adequadamente a media em cada nivel","comparar falta de ajuste com erro puro"),teste("Mandel",diag$mandel,"o termo quadratico nao melhora o modelo linear","investigar curvatura"))
 adequacao <- avaliar_adequacao(ajuste, params$criterios); niveis <- diag$resumo_niveis; n_rep <- range(niveis$n)
-dados_largos <- reshape(data.frame(concentracao=dados$.x, replica=ave(dados$.y,dados$.x,FUN=seq_along), sinal=dados$.y),idvar="concentracao",timevar="replica",direction="wide"); names(dados_largos) <- sub("sinal\\.","Replica ",names(dados_largos))
+dados_largos <- reshape(data.frame(concentracao=dados$.x, replica=ave(dados$.y,dados$.x,FUN=seq_along), sinal=dados$.y),idvar="concentracao",timevar="replica",direction="wide"); names(dados_largos) <- sub("sinal\\.","Replica ",names(dados_largos)); names(dados_largos)[1] <- "Concentracao"
 coeficientes <- as.data.frame(summary(ajuste$modelo)$coefficients); names(coeficientes) <- c("Estimativa","Erro padrao","t","p-valor"); coeficientes$Decisao <- ifelse(coeficientes[["p-valor"]]<alpha,"Rejeitar H0: coeficiente = 0","Nao rejeitar H0: coeficiente = 0")
-pesos_tabela <- data.frame(observacao=seq_len(nrow(dados)),concentracao=dados$.x,sinal=dados$.y,peso=ajuste$pesos)
+pesos_tabela <- data.frame(Observacao=seq_len(nrow(dados)),Concentracao=dados$.x,Sinal=dados$.y,Peso=ajuste$pesos)
 influencia <- diag$influencia; colunas_inf <- c("concentracao","sinal","residuo_studentizado","alavancagem","cook","dffits","dfbeta_intercepto","dfbeta_inclinacao")
 alerta <- influencia$flag_cook|influencia$flag_alavancagem|influencia$flag_dffits|influencia$flag_dfbeta|influencia$flag_studentizado; investigar <- influencia[alerta,colunas_inf,drop=FALSE]
 if(!nrow(investigar)) investigar <- data.frame(mensagem="Nenhuma observacao atingiu os limites de triagem; isto nao substitui a avaliacao metrologica.")
+influencia_exibicao <- influencia[,colunas_inf,drop=FALSE]
+nomes_influencia <- c("Concentracao","Sinal","Residuo studentizado","Alavancagem","Distancia de Cook","DFFITS","DFBETA do intercepto","DFBETA da inclinacao")
+names(influencia_exibicao) <- nomes_influencia
+if (ncol(investigar) == length(nomes_influencia)) names(investigar) <- nomes_influencia
+resultado_teste <- function(x) {
+  p_nome <- grep("^p[.-]valor$", names(x), value=TRUE)
+  saida <- x[,c("Teste","Estatistica",p_nome,"Decisao"),drop=FALSE]
+  names(saida)[3] <- "p-valor"
+  saida
+}
+residuos_extremos <- influencia_exibicao[,c("Concentracao","Sinal","Residuo studentizado"),drop=FALSE]
+medidas_influencia <- influencia_exibicao[,c("Alavancagem","Distancia de Cook","DFFITS","DFBETA do intercepto","DFBETA da inclinacao"),drop=FALSE]
+if (ncol(investigar) > 1L) investigar <- investigar[,c("Concentracao","Sinal","Residuo studentizado","Alavancagem","Distancia de Cook"),drop=FALSE]
 ```
 
 \newpage
@@ -58,7 +79,7 @@ As referencias abaixo sustentam os criterios e metodos utilizados. A decisao est
 Foram avaliadas **`r nrow(dados)` respostas**, provenientes de **`r nrow(niveis)` niveis de concentracao**. Foram usadas de **`r n_rep[1]` a `r n_rep[2]` replicatas por nivel**.
 
 ```{r dados-entrada}
-knitr::kable(dados_largos,digits=6,caption="Dados de entrada em formato horizontal: uma linha por nivel de concentracao")
+tabela(dados_largos,"Dados de entrada em formato horizontal: uma linha por nivel de concentracao")
 ```
 
 ## Analise descritiva por nivel
@@ -66,7 +87,8 @@ knitr::kable(dados_largos,digits=6,caption="Dados de entrada em formato horizont
 Para cada nivel, a tabela informa a media do sinal, o desvio-padrao (DP) e o coeficiente de variacao (CV), calculado como $CV(\%) = 100s/\bar{y}$.
 
 ```{r resumo-niveis}
-knitr::kable(niveis,digits=6,caption="Estatisticas descritivas por nivel de concentracao")
+names(niveis) <- c("Concentracao","Numero de replicatas","Media do sinal","Desvio-padrao do sinal","CV (%)")
+tabela(niveis,"Estatisticas descritivas por nivel de concentracao")
 ```
 
 # Descricao dos testes e dos metodos de estimacao
@@ -86,7 +108,7 @@ O ajuste deste relatorio usa **`r toupper(ajuste$metodo)`**. A estrategia de pes
 ## Testes aplicados
 
 ```{r descricao-testes}
-knitr::kable(rbind(homocedasticidade,linearidade,normalidade,independencia),digits=6,caption="Testes aplicados: hipotese nula, finalidade, resultado e decisao (alpha = 0,05)")
+tabela(resultado_teste(rbind(homocedasticidade,linearidade,normalidade,independencia)),"Resultados dos testes aplicados (alpha = 0,05)")
 ```
 
 Para Grubbs, a hipotese nula e que nao existe residuo extremo; o teste e uma triagem para investigacao e nao autoriza exclusao automatica de dados. Para os testes de coeficientes, $H_0: \beta_j=0$ e $H_1: \beta_j\ne0$.
@@ -95,16 +117,16 @@ Para Grubbs, a hipotese nula e que nao existe residuo extremo; o teste e uma tri
 
 ## Estimacao e pesos
 
-O modelo estimado foi $\hat y = `r formatC(stats::coef(ajuste$modelo)[1],digits=7,format="g",decimal.mark=",")` + (`r formatC(stats::coef(ajuste$modelo)[2],digits=7,format="g",decimal.mark=",")`)x$. O valor de $R^2$ e `r formatC(summary(ajuste$modelo)$r.squared,digits=5,format="f",decimal.mark=",")`; ele e descritivo e nao e usado isoladamente para aprovar a curva.
+O modelo estimado foi $\hat y = `r formatC(stats::coef(ajuste$modelo)[1],digits=4,format="fg",decimal.mark=",")` + (`r formatC(stats::coef(ajuste$modelo)[2],digits=4,format="fg",decimal.mark=",")`)x$. O valor de $R^2$ e `r formatC(summary(ajuste$modelo)$r.squared,digits=4,format="f",decimal.mark=",")`; ele e descritivo e nao e usado isoladamente para aprovar a curva.
 
 ```{r pesos}
-if(ajuste$metodo=="wls") knitr::kable(pesos_tabela,digits=6,caption="Pesos efetivamente usados no ajuste WLS") else cat("No ajuste OLS, todos os pesos sao iguais a 1; portanto, nao ha ponderacao das observacoes.")
+if(ajuste$metodo=="wls") tabela(pesos_tabela,"Pesos efetivamente usados no ajuste WLS") else cat("No ajuste OLS, todos os pesos sao iguais a 1; portanto, nao ha ponderacao das observacoes.")
 ```
 
 ## Coeficientes e testes t
 
 ```{r coeficientes}
-knitr::kable(coeficientes,digits=6,caption=paste0("Coeficientes e testes t do modelo ",toupper(ajuste$metodo)))
+tabela(coeficientes,paste0("Coeficientes e testes t do modelo ",toupper(ajuste$metodo)))
 ```
 
 ```{r curva, fig.cap='Curva de calibracao, dados individuais, centroides e limites de predicao. A legenda esta na lateral.'}
@@ -114,8 +136,8 @@ grafico_calibracao(ajuste)
 ## Variancia, falta de ajuste e curvatura
 
 ```{r variancia-testes}
-knitr::kable(homocedasticidade,digits=6,caption="Testes de homocedasticidade")
-knitr::kable(linearidade,digits=6,caption="Falta de ajuste e investigacao de curvatura")
+tabela(resultado_teste(homocedasticidade),"Testes de homocedasticidade")
+tabela(resultado_teste(linearidade),"Falta de ajuste e investigacao de curvatura")
 ```
 
 ```{r variancia, fig.cap='Variancia do sinal por nivel de concentracao. A legenda esta na lateral.'}
@@ -127,8 +149,8 @@ grafico_variancia(ajuste)
 ## Normalidade e independencia
 
 ```{r testes-residuos}
-knitr::kable(normalidade,digits=6,caption="Testes de normalidade dos residuos")
-knitr::kable(independencia,digits=6,caption="Testes de independencia dos residuos")
+tabela(resultado_teste(normalidade),"Testes de normalidade dos residuos")
+tabela(resultado_teste(independencia),"Testes de independencia dos residuos")
 ```
 
 ```{r residuos, fig.cap='Residuos padronizados em funcao da concentracao. A legenda esta na lateral.'}
@@ -142,9 +164,10 @@ grafico_qq(ajuste,semente=2026)
 ## Valores extremos e influencia
 
 ```{r influencia}
-knitr::kable(teste("Grubbs",diag$grubbs,"nao ha residuo extremo","triagem de valor extremo"),digits=6,caption="Teste de Grubbs")
-knitr::kable(influencia[,colunas_inf],digits=5,caption="Diagnosticos de valores extremos e influencia para todas as observacoes")
-knitr::kable(investigar,digits=5,caption="Observacoes sinalizadas para investigacao")
+tabela(resultado_teste(teste("Grubbs",diag$grubbs,"nao ha residuo extremo","triagem de valor extremo")),"Teste de Grubbs")
+tabela(residuos_extremos,"Residuos extremos para todas as observacoes")
+tabela(medidas_influencia,"Medidas de influencia para todas as observacoes")
+tabela(investigar,"Observacoes sinalizadas para investigacao")
 ```
 
 ```{r influencia-grafico, fig.cap='Distancia de Cook e alavancagem; linhas tracejadas sao limites de triagem e legendas estao na lateral.'}
@@ -154,8 +177,10 @@ grafico_influencia(ajuste)
 ## Retrocalculo e incerteza
 
 ```{r adequacao}
-knitr::kable(adequacao$criterios,digits=6,caption="Criterios de aceitacao informados")
-knitr::kable(adequacao$retrocalculo_por_nivel,digits=6,caption="Retrocalculo por nivel")
+names(adequacao$criterios) <- c("Criterio","Valor","Limite","Status")
+names(adequacao$retrocalculo_por_nivel) <- c("Concentracao","Vies (%)","Erro absoluto medio (%)")
+tabela(adequacao$criterios,"Criterios de aceitacao informados")
+tabela(adequacao$retrocalculo_por_nivel,"Retrocalculo por nivel")
 ```
 
 ```{r incerteza, fig.cap='Incerteza da predicao inversa para diferentes numeros de replicatas. A legenda esta na lateral.'}
