@@ -111,6 +111,8 @@ grafico_influencia <- function(ajuste) {
 #' @export
 grafico_incerteza_predicao <- function(ajuste, k = c(1, 2, 3, 4, 9, 16)) {
   if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
+  old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
+  graphics::par(mar = graphics::par("mar") + c(0, 0, 2.2, 0), xpd = NA)
   d <- ajuste$dados; xs <- seq(min(d$.x), max(d$.x), length.out = 200); pal <- .valcurva_palette()
   cols <- grDevices::hcl.colors(length(k), "Dynamic")
   all <- do.call(rbind, lapply(k, function(ki) {
@@ -123,7 +125,8 @@ grafico_incerteza_predicao <- function(ajuste, k = c(1, 2, 3, 4, 9, 16)) {
   for (i in seq_along(k)) {
     z <- all[all$k == k[i], ]; graphics::lines(z$concentracao, z$u, col = cols[i], lwd = 2)
   }
-  graphics::legend("top", legend = paste0("K=", k), col = cols, lty = 1, lwd = 2, bty = "n", ncol = min(3, length(k)))
+  graphics::legend("top", inset = c(0, -0.32), legend = paste0("K=", k),
+                   col = cols, lty = 1, lwd = 2, bty = "n", ncol = min(3, length(k)), xpd = NA)
   invisible(all)
 }
 
