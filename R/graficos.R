@@ -63,6 +63,47 @@ grafico_residuos <- function(ajuste) {
   invisible(z)
 }
 
+#' Plot a normal Q-Q graph with a simulation envelope for residuals
+#'
+#' @param ajuste A `valcurva_fit` object.
+#' @param nivel Envelope coverage level.
+#' @param simulacoes Number of normal samples used to build the envelope.
+#' @param semente Optional seed for a reproducible envelope.
+#' @return Invisibly, data used to construct the graph.
+#' @export
+grafico_qq <- function(ajuste, nivel = .95, simulacoes = 999L, semente = NULL) {
+  if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
+  if (!is.null(semente)) set.seed(semente)
+  r <- sort(stats::rstandard(ajuste$modelo)); n <- length(r)
+  if (n < 3L) .valcurva_abort("O grafico Q-Q requer ao menos tres residuos.")
+  p <- stats::ppoints(n); teorico <- stats::qnorm(p)
+  sim <- replicate(simulacoes, sort(stats::rnorm(n)))
+  alpha <- (1 - nivel) / 2
+  env <- t(apply(sim, 1, stats::quantile, probs = c(alpha, 1 - alpha), names = FALSE))
+  graphics::plot(teorico, r, pch = 19, col = .valcurva_palette()$data,
+                 xlab = "Quantis teoricos normais", ylab = "Residuos padronizados")
+  graphics::lines(teorico, env[, 1], lty = 2, col = .valcurva_palette()$band)
+  graphics::lines(teorico, env[, 2], lty = 2, col = .valcurva_palette()$band)
+  graphics::abline(stats::lm(r ~ teorico), col = .valcurva_palette()$line, lwd = 2)
+  invisible(data.frame(quantil_teorico = teorico, residuo = r, envelope_inferior = env[, 1], envelope_superior = env[, 2]))
+}
+
+#' Plot Cook's distance and leverage against their screening limits
+#' @param ajuste A `valcurva_fit` object.
+#' @return Invisibly, the influence diagnostics.
+#' @export
+grafico_influencia <- function(ajuste) {
+  if (!inherits(ajuste, "valcurva_fit")) .valcurva_abort("`ajuste` deve ser um objeto `valcurva_fit`.")
+  z <- ajuste$diagnosticos$influencia; n <- nrow(z); p <- length(stats::coef(ajuste$modelo))
+  old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
+  graphics::par(mfrow = c(1, 2))
+  graphics::plot(seq_len(n), z$cook, pch = 19, xlab = "Observacao", ylab = "Distancia de Cook")
+  graphics::abline(h = 4 / n, lty = 2, col = .valcurva_palette()$band)
+  graphics::plot(seq_len(n), z$alavancagem, pch = 19, xlab = "Observacao", ylab = "Alavancagem")
+  graphics::abline(h = 2 * p / n, lty = 2, col = .valcurva_palette()$band)
+  invisible(z)
+}
+
 #' Plot inverse prediction uncertainty over the calibration range
 #' @param ajuste A `valcurva_fit` object.
 #' @param k Numeric vector of numbers of replicate measurements.
@@ -86,17 +127,22 @@ grafico_incerteza_predicao <- function(ajuste, k = c(1, 2, 3, 4, 9, 16)) {
   invisible(all)
 }
 
-#' Create the four-panel calibration figure
+#' Create the six-panel calibration figure
 #' @param ajuste A `valcurva_fit` object.
 #' @param k Replicate counts for the uncertainty panel.
 #' @return Invisibly, `ajuste`.
 #' @export
 painel_calibracao <- function(ajuste, k = c(1, 2, 3, 4, 9, 16)) {
   old <- graphics::par(no.readonly = TRUE); on.exit(graphics::par(old), add = TRUE)
-  graphics::par(mfrow = c(2, 2), mar = c(4, 4, 2, 1), oma = c(0, 0, 1, 0))
+  graphics::par(mfrow = c(3, 2), mar = c(4, 4, 2, 1), oma = c(0, 0, 1, 0))
   grafico_calibracao(ajuste, main = sprintf("Curva de calibracao (%s)", toupper(ajuste$metodo)))
   grafico_variancia(ajuste); graphics::title("Variancia por nivel")
   grafico_residuos(ajuste); graphics::title("Diagnostico de residuos")
+  grafico_qq(ajuste, simulacoes = 399L, semente = 1); graphics::title("Q-Q com envelope normal")
   grafico_incerteza_predicao(ajuste, k = k); graphics::title("Incerteza de predicao")
+  graphics::plot(seq_len(nrow(ajuste$dados)), ajuste$diagnosticos$influencia$cook, pch = 19,
+                 xlab = "Observacao", ylab = "Distancia de Cook")
+  graphics::abline(h = 4 / nrow(ajuste$dados), lty = 2, col = .valcurva_palette()$band)
+  graphics::title("Influencia: Distancia de Cook")
   invisible(ajuste)
 }

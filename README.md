@@ -10,12 +10,33 @@ resíduos, variância e incerteza de predição.
 ```r
 dados <- validar_curva(dados_brutos, concentracao, sinal, replica)
 ajuste <- ajustar_curva(dados, metodo = "auto")
-diagnosticar_curva(ajuste)
+diagnosticos <- diagnosticar_curva(ajuste)
 painel_calibracao(ajuste)
 ```
 
 O resultado automático é uma recomendação baseada em diagnósticos; a decisão
 de aprovar a faixa e o modelo continua documentada pelo laboratório.
+
+## Diagnosticos adicionais
+
+`diagnosticar_curva()` reune Shapiro-Wilk, Anderson-Darling,
+Kolmogorov-Smirnov com correcao de Lilliefors e Ryan-Joiner para os residuos;
+Brown-Forsythe, Breusch-Pagan, Goldfeld-Quandt e Cochran para variancia;
+Durbin-Watson e Breusch-Godfrey para independencia; e residuos padronizados e
+studentizados, alavancagem, Cook, DFFITS e DFBETAS para influencia.
+
+```r
+diagnosticos$normalidade
+diagnosticos$independencia
+grafico_qq(ajuste, semente = 2026)
+grafico_influencia(ajuste)
+analisar_sensibilidade(ajuste)
+```
+
+`analisar_sensibilidade()` ajusta modelos deixando uma observacao de fora
+somente para medir seu impacto nos estimadores. Ela nunca altera os dados nem
+recomenda a exclusao automatica de uma medicao. O pacote nao transforma os
+dados para tentar obter normalidade.
 
 ## Exemplo Eurachem A5.2
 

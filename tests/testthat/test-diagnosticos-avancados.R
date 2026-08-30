@@ -1,0 +1,20 @@
+test_that("advanced diagnostics are available for a replicated calibration curve", {
+  d <- validar_curva(curva_homocedastica, concentracao, sinal, replica)
+  fit <- ajustar_curva(d, "ols")
+  z <- diagnosticar_curva(fit)
+  expect_true(all(c("shapiro_wilk", "anderson_darling", "kolmogorov_smirnov_lilliefors", "ryan_joiner") %in% names(z$normalidade)))
+  expect_true(all(c("durbin_watson", "breusch_godfrey") %in% names(z$independencia)))
+  expect_true(all(c("residuo_studentizado", "dffits", "dfbeta_intercepto", "dfbeta_inclinacao") %in% names(z$influencia)))
+  expect_true(is.list(z$homocedasticidade))
+  expect_true(is.list(z$cochran))
+})
+
+test_that("sensitivity analysis preserves the original adjustment", {
+  d <- validar_curva(curva_homocedastica, concentracao, sinal, replica)
+  fit <- ajustar_curva(d, "ols")
+  original <- coef(fit$modelo)
+  z <- analisar_sensibilidade(fit, observacoes = 1)
+  expect_equal(nrow(z), 1)
+  expect_equal(coef(fit$modelo), original)
+  expect_true(all(c("mudanca_inclinacao_percentual", "mudanca_r2") %in% names(z)))
+})

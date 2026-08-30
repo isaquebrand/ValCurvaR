@@ -20,6 +20,8 @@ Roxygen: list(markdown = TRUE)
 Imports:
     graphics,
     grDevices,
+    lmtest,
+    nortest,
     stats
 Suggests:
     knitr,

@@ -11,23 +11,106 @@ diagnosticar_curva <- function(ajuste) {
   residuals <- stats::residuals(fit)
   h <- stats::hatvalues(fit)
   sigma <- sqrt(sum(residuals^2) / stats::df.residual(fit))
-  standardized <- residuals / (sigma * sqrt(pmax(1 - h, .Machine$double.eps)))
+  standardized <- stats::rstandard(fit)
+  studentized <- stats::rstudent(fit)
   cooks <- stats::cooks.distance(fit)
+  dffits <- stats::dffits(fit)
+  dfbetas <- stats::dfbetas(fit)
+  p <- length(stats::coef(fit))
   bf <- .brown_forsythe(data$.y, data$.x)
+  bp <- .breusch_pagan(fit)
+  gq <- .goldfeld_quandt(fit)
+  cochran <- .cochran_test(data$.y, data$.x)
   lof <- .lack_of_fit(fit, data)
   quadratic <- .mandel_test(fit, data)
+  normality <- .normality_tests(residuals)
+  independence <- .independence_tests(fit)
   list(
     resumo_niveis = .level_summary(data),
     homocedasticidade = bf,
+    breusch_pagan = bp,
+    goldfeld_quandt = gq,
+    cochran = cochran,
     falta_ajuste = lof,
     mandel = quadratic,
     influencia = data.frame(concentracao = data$.x, sinal = data$.y,
                              residuo = residuals, residuo_padronizado = standardized,
-                             alavancagem = h, cook = cooks),
-    normalidade = if (length(residuals) >= 3L && length(residuals) <= 5000L)
-      stats::shapiro.test(residuals) else NULL,
-    avisos = .diagnostic_messages(bf, lof, quadratic, cooks, n)
+                             residuo_studentizado = studentized, alavancagem = h,
+                             cook = cooks, dffits = dffits,
+                             dfbeta_intercepto = dfbetas[, 1], dfbeta_inclinacao = dfbetas[, 2],
+                             flag_cook = cooks > 4 / n, flag_alavancagem = h > 2 * p / n,
+                             flag_dffits = abs(dffits) > 2 * sqrt(p / n),
+                             flag_dfbeta = apply(abs(dfbetas), 1, max) > 2 / sqrt(n),
+                             flag_studentizado = abs(studentized) > stats::qt(.975, stats::df.residual(fit))),
+    normalidade = normality,
+    independencia = independence,
+    avisos = .diagnostic_messages(bf, bp, gq, cochran, lof, quadratic, cooks, studentized, n)
   )
+}
+
+.normality_tests <- function(residuals) {
+  n <- length(residuals)
+  unavailable <- list(disponivel = FALSE, mensagem = "Amostra insuficiente para o teste.")
+  shapiro <- if (n >= 3L && n <= 5000L) stats::shapiro.test(residuals) else unavailable
+  ad <- if (n >= 8L) nortest::ad.test(residuals) else unavailable
+  ks <- if (n >= 5L) nortest::lillie.test(residuals) else unavailable
+  list(shapiro_wilk = shapiro, anderson_darling = ad, kolmogorov_smirnov_lilliefors = ks,
+       ryan_joiner = .ryan_joiner_test(residuals))
+}
+
+.ryan_joiner_test <- function(x, alpha = .05) {
+  n <- length(x)
+  if (n < 4L) return(list(disponivel = FALSE, mensagem = "Ryan-Joiner requer ao menos quatro residuos."))
+  p <- (seq_len(n) - 3 / 8) / (n + 1 / 4)
+  estatistica <- stats::cor(sort(x), stats::qnorm(p))
+  crit <- 1.0063 - .1288 / sqrt(n) - .6118 / n + 1.3505 / n^2
+  list(disponivel = TRUE, estatistica = estatistica, valor_critico_5_percentual = crit,
+       p_valor = .rj_p_value(estatistica, n), rejeita_normalidade = estatistica < crit,
+       metodo = "Ryan-Joiner (aproximacao por correlacao normal)")
+}
+
+.rj_p_value <- function(r, n) {
+  crit <- c(
+    `0.10` = 1.0071 - .1371 / sqrt(n) - .3682 / n + .7780 / n^2,
+    `0.05` = 1.0063 - .1288 / sqrt(n) - .6118 / n + 1.3505 / n^2,
+    `0.01` = .9963 - .0211 / sqrt(n) - 1.4106 / n + 3.1791 / n^2
+  )
+  if (r > crit[1]) return("> 0.10")
+  if (r < crit[3]) return("< 0.01")
+  unname(stats::approx(x = rev(crit), y = c(.10, .05, .01), xout = r)$y)
+}
+
+.breusch_pagan <- function(fit) {
+  z <- tryCatch(lmtest::bptest(fit), error = function(e) e)
+  if (inherits(z, "error")) return(list(disponivel = FALSE, mensagem = conditionMessage(z)))
+  list(disponivel = TRUE, estatistica = unname(z$statistic), gl = unname(z$parameter), p_valor = z$p.value)
+}
+
+.goldfeld_quandt <- function(fit) {
+  z <- tryCatch(lmtest::gqtest(fit, fraction = .2), error = function(e) e)
+  if (inherits(z, "error")) return(list(disponivel = FALSE, mensagem = conditionMessage(z)))
+  list(disponivel = TRUE, estatistica = unname(z$statistic), gl = unname(z$parameter), p_valor = z$p.value)
+}
+
+.cochran_test <- function(y, x) {
+  groups <- split(y, x); sizes <- lengths(groups)
+  if (length(groups) < 2L || any(sizes < 2L) || length(unique(sizes)) != 1L)
+    return(list(disponivel = FALSE, mensagem = "Cochran requer ao menos dois niveis com o mesmo numero de replicatas."))
+  vars <- vapply(groups, stats::var, numeric(1)); q <- max(vars) / sum(vars)
+  k <- length(groups); gl <- sizes[1] - 1L
+  critical <- function(alpha) { f <- stats::qf(1 - alpha / k, gl, (k - 1) * gl); f / (f + k - 1) }
+  p <- tryCatch(stats::uniroot(function(a) critical(a) - q, c(1e-8, .999999))$root, error = function(e) NA_real_)
+  list(disponivel = TRUE, estatistica = q, gl = gl, p_valor_aproximado = p,
+       valor_critico_5_percentual = critical(.05), variancias_por_nivel = vars)
+}
+
+.independence_tests <- function(fit) {
+  n <- length(stats::residuals(fit))
+  dw <- tryCatch(lmtest::dwtest(fit), error = function(e) e)
+  bg <- tryCatch(lmtest::bgtest(fit, order = min(2L, max(1L, floor(n / 3L)))), error = function(e) e)
+  make <- function(z) if (inherits(z, "error")) list(disponivel = FALSE, mensagem = conditionMessage(z)) else
+    list(disponivel = TRUE, estatistica = unname(z$statistic), gl = unname(z$parameter), p_valor = z$p.value, alternativa = z$alternative)
+  list(durbin_watson = make(dw), breusch_godfrey = make(bg))
 }
 
 .level_summary <- function(data) {
@@ -75,15 +158,19 @@ diagnosticar_curva <- function(ajuste) {
        modelo_quadratico = quad)
 }
 
-.diagnostic_messages <- function(bf, lof, mandel, cooks, n) {
+.diagnostic_messages <- function(bf, bp, gq, cochran, lof, mandel, cooks, studentized, n) {
   result <- character()
   if (isTRUE(bf$disponivel) && is.finite(bf$p_valor) && bf$p_valor < .05)
     result <- c(result, "Ha evidencia de heterocedasticidade; compare OLS e WLS.")
+  if (isTRUE(bp$disponivel) && bp$p_valor < .05) result <- c(result, "Breusch-Pagan indica variancia nao constante.")
+  if (isTRUE(gq$disponivel) && gq$p_valor < .05) result <- c(result, "Goldfeld-Quandt indica variancia nao constante ao longo da concentracao.")
+  if (isTRUE(cochran$disponivel) && is.finite(cochran$p_valor_aproximado) && cochran$p_valor_aproximado < .05) result <- c(result, "Cochran indica uma variancia de nivel desproporcionalmente alta.")
   if (isTRUE(lof$disponivel) && is.finite(lof$p_valor) && lof$p_valor < .05)
     result <- c(result, "Ha evidencia de falta de ajuste linear; investigue a faixa ou a curvatura.")
   if (isTRUE(mandel$disponivel) && is.finite(mandel$p_valor) && mandel$p_valor < .05)
     result <- c(result, "O termo quadratico melhora o ajuste; nao aprove a linearidade sem investigacao.")
   if (any(cooks > 4 / n, na.rm = TRUE))
     result <- c(result, "Ha observacoes influentes; investigue-as antes de excluir qualquer dado.")
+  if (any(abs(studentized) > stats::qt(.975, max(1, n - 2)), na.rm = TRUE)) result <- c(result, "Ha residuos studentizados extremos; confirme a causa metrologica antes de qualquer decisao.")
   if (!length(result)) "Nenhum alerta automatico foi identificado; confirme visualmente os graficos." else result
 }
