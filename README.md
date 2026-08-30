@@ -14,6 +14,13 @@ diagnosticos <- diagnosticar_curva(ajuste)
 painel_calibracao(ajuste)
 ```
 
+Para uma tabela horizontal, informe somente a coluna de concentracao. As demais
+colunas numericas serao tratadas como replicatas e convertidas automaticamente:
+
+```r
+curva <- validar_curva(dados_horizontais, concentracao)
+```
+
 O resultado automático é uma recomendação baseada em diagnósticos; a decisão
 de aprovar a faixa e o modelo continua documentada pelo laboratório.
 

@@ -4,14 +4,15 @@
 \alias{validar_curva}
 \title{Validate analytical calibration data}
 \usage{
-validar_curva(dados, concentracao, sinal, replica = NULL)
+validar_curva(dados, concentracao, sinal = NULL, replica = NULL)
 }
 \arguments{
 \item{dados}{A data frame.}
 
 \item{concentracao}{Concentration column, supplied bare or as a string.}
 
-\item{sinal}{Instrumental response column, supplied bare or as a string.}
+\item{sinal}{Instrumental response column, supplied bare or as a string.
+Omit it for horizontal data with one numeric response column per replicate.}
 
 \item{replica}{Optional replicate identifier column.}
 }
@@ -20,7 +21,9 @@ A \code{data.frame} with standard internal columns \code{.x}, \code{.y} and
 \code{.replica}.
 }
 \description{
-Keeps the original measurements in long format. Replicates must not be
+Keeps the original measurements in long format. A horizontal table is also
+accepted: omit \code{sinal} and every numeric column other than \code{concentracao}
+is converted internally to a replicate column. Replicates must not be
 averaged before validation because they are needed for variance and
 lack-of-fit diagnostics.
 }

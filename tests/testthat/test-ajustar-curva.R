@@ -28,3 +28,11 @@ test_that("validation rejects insufficient levels", {
   d <- data.frame(x = c(1, 1, 2, 2), y = c(1, 1, 2, 2))
   expect_error(validar_curva(d, x, y), "tres niveis")
 })
+
+test_that("horizontal input is converted directly to long format", {
+  largo <- data.frame(concentracao = c(1, 2, 3, 4), rep_1 = c(2, 4, 6, 8), rep_2 = c(2.1, 3.9, 6.1, 7.9))
+  d <- validar_curva(largo, concentracao)
+  expect_equal(nrow(d), 8)
+  expect_equal(sort(unique(d$.replica)), c("rep_1", "rep_2"))
+  expect_equal(d$.y[d$.x == 1], c(2, 2.1))
+})
