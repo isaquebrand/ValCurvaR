@@ -40,6 +40,15 @@ somente para medir seu impacto nos estimadores. Ela nunca altera os dados nem
 recomenda a exclusao automatica de uma medicao. O pacote nao transforma os
 dados para tentar obter normalidade.
 
+## Relatorio completo em PDF
+
+Com o ajuste pronto, gere um relatorio tecnico completo por R Markdown com um
+unico comando:
+
+```r
+gerar_relatorio_pdf(ajuste, "relatorio-calibracao.pdf")
+```
+
 ## Exemplo Eurachem A5.2
 
 ```r

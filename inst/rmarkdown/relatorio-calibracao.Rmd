@@ -1,0 +1,103 @@
+---
+title: "`r params$titulo`"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+params:
+  ajuste: !r NULL
+  titulo: "Relatorio de validacao da curva de calibracao"
+  criterios: !r list()
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=4.6)
+ajuste <- params$ajuste; diag <- ajuste$diagnosticos; dados <- ajuste$dados
+teste <- function(nome, z, p=NULL) {
+  if (is.null(z) || identical(z$disponivel, FALSE)) return(data.frame(teste=nome, estatistica=NA_real_, p_valor=NA_real_, observacao=ifelse(is.null(z$mensagem), "Indisponivel", z$mensagem)))
+  e <- if (!is.null(z$estatistica)) unname(z$estatistica) else if (!is.null(z$statistic)) unname(z$statistic[[1]]) else NA_real_
+  pv <- if (!is.null(p)) p else if (!is.null(z$p_valor)) z$p_valor else if (!is.null(z$p.value)) z$p.value else if (!is.null(z$p_valor_aproximado)) z$p_valor_aproximado else NA_real_
+  data.frame(teste=nome, estatistica=e, p_valor=pv, observacao="")
+}
+norm <- rbind(teste("Shapiro-Wilk",diag$normalidade$shapiro_wilk),teste("Anderson-Darling",diag$normalidade$anderson_darling),teste("KS-Lilliefors",diag$normalidade$kolmogorov_smirnov_lilliefors),teste("Ryan-Joiner",diag$normalidade$ryan_joiner,if(is.numeric(diag$normalidade$ryan_joiner$p_valor)) diag$normalidade$ryan_joiner$p_valor else NA_real_))
+hetero <- rbind(teste("Brown-Forsythe",diag$homocedasticidade),teste("Breusch-Pagan",diag$breusch_pagan),teste("Goldfeld-Quandt",diag$goldfeld_quandt),teste("Cochran",diag$cochran))
+indep <- rbind(teste("Durbin-Watson",diag$independencia$durbin_watson),teste("Breusch-Godfrey",diag$independencia$breusch_godfrey))
+adequacao <- avaliar_adequacao(ajuste, params$criterios)
+```
+
+# Dados de entrada
+
+Foram avaliadas `r nrow(dados)` respostas em `r length(unique(dados$.x))` niveis de concentracao, preservando as replicatas.
+
+```{r niveis}
+knitr::kable(diag$resumo_niveis, digits=6, caption="Resumo por nivel")
+```
+
+# Modelo de calibracao
+
+Modelo selecionado: **`r toupper(ajuste$metodo)`**. Estrategia de pesos: **`r ajuste$estrategia_pesos`**.
+
+```{r coeficientes}
+knitr::kable(as.data.frame(summary(ajuste$modelo)$coefficients), digits=6, caption="Coeficientes e testes t")
+```
+
+```{r curva, fig.cap='Curva de calibracao e limites de predicao'}
+grafico_calibracao(ajuste)
+```
+
+# Variancia, falta de ajuste e curvatura
+
+```{r variancia-testes}
+knitr::kable(hetero, digits=6, caption="Testes de variancia")
+knitr::kable(rbind(teste("Falta de ajuste",diag$falta_ajuste),teste("Mandel",diag$mandel)), digits=6, caption="Linearidade")
+```
+
+```{r variancia, fig.cap='Variabilidade por nivel'}
+grafico_variancia(ajuste)
+```
+
+# Residuos, normalidade e independencia
+
+```{r testes-residuos}
+knitr::kable(norm, digits=6, caption="Normalidade dos residuos")
+knitr::kable(indep, digits=6, caption="Independencia dos residuos")
+```
+
+```{r residuos, fig.cap='Residuos padronizados'}
+grafico_residuos(ajuste)
+```
+
+```{r qq, fig.cap='Grafico Q-Q com envelope normal'}
+grafico_qq(ajuste, semente=2026)
+```
+
+# Valores extremos e influencia
+
+```{r influencia}
+knitr::kable(teste("Grubbs",diag$grubbs), digits=6, caption="Teste de valor extremo")
+inf <- diag$influencia
+alerta <- inf$flag_cook | inf$flag_alavancagem | inf$flag_dffits | inf$flag_dfbeta | inf$flag_studentizado
+inf_relatorio <- inf[alerta, c("concentracao", "sinal", "residuo_studentizado", "alavancagem", "cook", "dffits")]
+if (!nrow(inf_relatorio)) inf_relatorio <- data.frame(mensagem="Nenhuma observacao atingiu os limites de triagem.")
+knitr::kable(inf_relatorio, digits=5, caption="Observacoes sinalizadas para investigacao")
+```
+
+```{r influencia-grafico, fig.cap='Distancia de Cook e alavancagem'}
+grafico_influencia(ajuste)
+```
+
+# Retrocálculo, incerteza e conclusao
+
+```{r adequacao}
+knitr::kable(adequacao$criterios, digits=6, caption="Criterios de aceitacao")
+knitr::kable(adequacao$retrocalculo_por_nivel, digits=6, caption="Retrocalculo por nivel")
+```
+
+```{r incerteza, fig.cap='Incerteza de predicao inversa'}
+grafico_incerteza_predicao(ajuste)
+```
+
+`r adequacao$conclusao`
+
+O relatorio nao transforma os dados e nao exclui observacoes automaticamente.
