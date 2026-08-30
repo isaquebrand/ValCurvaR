@@ -1,10 +1,12 @@
 ---
 title: "`r params$titulo`"
+author: "ValCurvaR"
 date: "`r format(Sys.Date(), '%d/%m/%Y')`"
 output:
   pdf_document:
     toc: true
     number_sections: true
+    toc_depth: 2
 params:
   ajuste: !r NULL
   titulo: "Relatorio de validacao da curva de calibracao"
@@ -12,92 +14,156 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=4.6)
-ajuste <- params$ajuste; diag <- ajuste$diagnosticos; dados <- ajuste$dados
-teste <- function(nome, z, p=NULL) {
-  if (is.null(z) || identical(z$disponivel, FALSE)) return(data.frame(teste=nome, estatistica=NA_real_, p_valor=NA_real_, observacao=ifelse(is.null(z$mensagem), "Indisponivel", z$mensagem)))
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, fig.width=7.5, fig.height=4.8, fig.align="center")
+ajuste <- params$ajuste; stopifnot(inherits(ajuste, "valcurva_fit"))
+diag <- ajuste$diagnosticos; dados <- ajuste$dados; alpha <- 0.05
+decisao <- function(p, disponivel=TRUE) if (!isTRUE(disponivel) || !is.finite(p)) "Nao avaliado" else if (p < alpha) "Rejeitar H0" else "Nao rejeitar H0"
+teste <- function(nome, z, h0, finalidade, p=NULL) {
+  if (is.null(z) || identical(z$disponivel, FALSE)) return(data.frame(Teste=nome, `Hipotese nula (H0)`=h0, Finalidade=finalidade, Estatistica=NA_real_, `p-valor`=NA_real_, Decisao="Nao avaliado"))
   e <- if (!is.null(z$estatistica)) unname(z$estatistica) else if (!is.null(z$statistic)) unname(z$statistic[[1]]) else NA_real_
   pv <- if (!is.null(p)) p else if (!is.null(z$p_valor)) z$p_valor else if (!is.null(z$p.value)) z$p.value else if (!is.null(z$p_valor_aproximado)) z$p_valor_aproximado else NA_real_
-  data.frame(teste=nome, estatistica=e, p_valor=pv, observacao="")
+  data.frame(Teste=nome, `Hipotese nula (H0)`=h0, Finalidade=finalidade, Estatistica=e, `p-valor`=pv, Decisao=decisao(pv))
 }
-norm <- rbind(teste("Shapiro-Wilk",diag$normalidade$shapiro_wilk),teste("Anderson-Darling",diag$normalidade$anderson_darling),teste("KS-Lilliefors",diag$normalidade$kolmogorov_smirnov_lilliefors),teste("Ryan-Joiner",diag$normalidade$ryan_joiner,if(is.numeric(diag$normalidade$ryan_joiner$p_valor)) diag$normalidade$ryan_joiner$p_valor else NA_real_))
-hetero <- rbind(teste("Brown-Forsythe",diag$homocedasticidade),teste("Breusch-Pagan",diag$breusch_pagan),teste("Goldfeld-Quandt",diag$goldfeld_quandt),teste("Cochran",diag$cochran))
-indep <- rbind(teste("Durbin-Watson",diag$independencia$durbin_watson),teste("Breusch-Godfrey",diag$independencia$breusch_godfrey))
-adequacao <- avaliar_adequacao(ajuste, params$criterios)
+normalidade <- rbind(teste("Shapiro-Wilk",diag$normalidade$shapiro_wilk,"os residuos seguem distribuicao normal","avaliar normalidade dos residuos"),teste("Anderson-Darling",diag$normalidade$anderson_darling,"os residuos seguem distribuicao normal","avaliar normalidade, com enfase nas caudas"),teste("Kolmogorov-Smirnov-Lilliefors",diag$normalidade$kolmogorov_smirnov_lilliefors,"os residuos seguem distribuicao normal","avaliar normalidade com media e DP estimados"),teste("Ryan-Joiner",diag$normalidade$ryan_joiner,"os residuos seguem distribuicao normal","avaliar correlacao com quantis normais",if(is.numeric(diag$normalidade$ryan_joiner$p_valor)) diag$normalidade$ryan_joiner$p_valor else NA_real_))
+homocedasticidade <- rbind(teste("Brown-Forsythe",diag$homocedasticidade,"as variancias dos niveis sao iguais","testar homocedasticidade de forma robusta"),teste("Breusch-Pagan",diag$breusch_pagan,"a variancia dos residuos e constante","testar variancia em funcao do ajuste"),teste("Goldfeld-Quandt",diag$goldfeld_quandt,"a variancia e constante ao longo da concentracao","detectar mudanca de variancia no intervalo"),teste("Cochran",diag$cochran,"nenhuma variancia por nivel e desproporcional","comparar a maior variancia entre niveis"))
+independencia <- rbind(teste("Durbin-Watson",diag$independencia$durbin_watson,"nao ha autocorrelacao serial dos residuos","avaliar independencia dos residuos"),teste("Breusch-Godfrey",diag$independencia$breusch_godfrey,"nao ha autocorrelacao serial dos residuos","avaliar autocorrelacao de ordem maior"))
+linearidade <- rbind(teste("Falta de ajuste",diag$falta_ajuste,"o modelo linear representa adequadamente a media em cada nivel","comparar falta de ajuste com erro puro"),teste("Mandel",diag$mandel,"o termo quadratico nao melhora o modelo linear","investigar curvatura"))
+adequacao <- avaliar_adequacao(ajuste, params$criterios); niveis <- diag$resumo_niveis; n_rep <- range(niveis$n)
+dados_largos <- reshape(data.frame(concentracao=dados$.x, replica=ave(dados$.y,dados$.x,FUN=seq_along), sinal=dados$.y),idvar="concentracao",timevar="replica",direction="wide"); names(dados_largos) <- sub("sinal\\.","Replica ",names(dados_largos))
+coeficientes <- as.data.frame(summary(ajuste$modelo)$coefficients); names(coeficientes) <- c("Estimativa","Erro padrao","t","p-valor"); coeficientes$Decisao <- ifelse(coeficientes[["p-valor"]]<alpha,"Rejeitar H0: coeficiente = 0","Nao rejeitar H0: coeficiente = 0")
+pesos_tabela <- data.frame(observacao=seq_len(nrow(dados)),concentracao=dados$.x,sinal=dados$.y,peso=ajuste$pesos)
+influencia <- diag$influencia; colunas_inf <- c("concentracao","sinal","residuo_studentizado","alavancagem","cook","dffits","dfbeta_intercepto","dfbeta_inclinacao")
+alerta <- influencia$flag_cook|influencia$flag_alavancagem|influencia$flag_dffits|influencia$flag_dfbeta|influencia$flag_studentizado; investigar <- influencia[alerta,colunas_inf,drop=FALSE]
+if(!nrow(investigar)) investigar <- data.frame(mensagem="Nenhuma observacao atingiu os limites de triagem; isto nao substitui a avaliacao metrologica.")
 ```
+
+\newpage
+
+# Objetivo
+
+Documentar de forma rastreavel a avaliacao da curva de calibracao analitica, desde os dados brutos e sua precisao por nivel ate a estimacao do modelo, seus pressupostos, testes de adequacao, diagnosticos de residuos e influencia. O relatorio apoia a decisao tecnica sobre a aplicabilidade do modelo na faixa estudada; ele nao aprova uma curva apenas por $R^2$ e nao exclui observacoes automaticamente.
+
+# Referencias
+
+As referencias abaixo sustentam os criterios e metodos utilizados. A decisao estatistica no relatorio adota, quando houver p-valor disponivel, nivel de significancia de 5%.
+
+1. **ISO 8466-1:2021.** *Water quality -- Calibration and evaluation of analytical methods -- Part 1: Statistical evaluation of the linear calibration function.* Fundamenta a avaliacao estatistica de funcoes lineares de calibracao, incluindo verificacao de ajuste e uso de replicatas.
+2. **Eurachem (2014).** *The Fitness for Purpose of Analytical Methods: A Laboratory Guide to Method Validation and Related Topics.* Orienta a validacao de metodos analiticos, a avaliacao de linearidade, precisao, vies e adequacao ao uso pretendido.
+3. **ICH Q2(R2) (2023).** *Validation of Analytical Procedures.* Apresenta expectativas regulatorias para validacao, desenho experimental e avaliacao de desempenho de procedimentos analiticos.
+4. **Montgomery, D. C.; Peck, E. A.; Vining, G. G. (2021).** *Introduction to Linear Regression Analysis*, 6. ed. Wiley. Referencia para estimacao por minimos quadrados, testes de coeficientes, diagnosticos de residuos, alavancagem e distancia de Cook.
+5. **ValCurvaR.** Pacote que organiza a validacao, o ajuste OLS/WLS, os diagnosticos, retrocalculo e graficos deste relatorio. Utiliza `stats` (regressao linear e testes basicos), `lmtest` (Breusch-Pagan, Goldfeld-Quandt, Durbin-Watson e Breusch-Godfrey), `nortest` (Anderson-Darling e Lilliefors), `outliers` (Grubbs), `graphics` e `grDevices` (graficos); `knitr` e `rmarkdown` fazem a geracao do documento.
 
 # Dados de entrada
 
-Foram avaliadas `r nrow(dados)` respostas em `r length(unique(dados$.x))` niveis de concentracao, preservando as replicatas.
+Foram avaliadas **`r nrow(dados)` respostas**, provenientes de **`r nrow(niveis)` niveis de concentracao**. Foram usadas de **`r n_rep[1]` a `r n_rep[2]` replicatas por nivel**.
 
-```{r niveis}
-knitr::kable(diag$resumo_niveis, digits=6, caption="Resumo por nivel")
+```{r dados-entrada}
+knitr::kable(dados_largos,digits=6,caption="Dados de entrada em formato horizontal: uma linha por nivel de concentracao")
 ```
 
-# Modelo de calibracao
+## Analise descritiva por nivel
 
-Modelo selecionado: **`r toupper(ajuste$metodo)`**. Estrategia de pesos: **`r ajuste$estrategia_pesos`**.
+Para cada nivel, a tabela informa a media do sinal, o desvio-padrao (DP) e o coeficiente de variacao (CV), calculado como $CV(\%) = 100s/\bar{y}$.
+
+```{r resumo-niveis}
+knitr::kable(niveis,digits=6,caption="Estatisticas descritivas por nivel de concentracao")
+```
+
+# Descricao dos testes e dos metodos de estimacao
+
+## Modelo e minimos quadrados ordinarios
+
+O modelo linear de calibracao e $y_i = \beta_0 + \beta_1x_i + \varepsilon_i$, em que $x_i$ e a concentracao, $y_i$ e o sinal, $\beta_0$ e o intercepto, $\beta_1$ e a sensibilidade e $\varepsilon_i$ e o erro aleatorio.
+
+No **metodo dos minimos quadrados ordinarios (OLS, *Ordinary Least Squares*)**, os estimadores minimizam $SSE = \sum_{i=1}^{n}(y_i-\beta_0-\beta_1x_i)^2$. As estimativas sao $\hat\beta_1=\sum(x_i-\bar{x})(y_i-\bar{y})/\sum(x_i-\bar{x})^2$ e $\hat\beta_0=\bar{y}-\hat\beta_1\bar{x}$. O OLS e apropriado quando a variancia dos residuos pode ser considerada constante.
+
+## Minimos quadrados ponderados
+
+No **metodo dos minimos quadrados ponderados (WLS, *Weighted Least Squares*)**, minimiza-se $SSE_w = \sum_{i=1}^{n}w_i(y_i-\beta_0-\beta_1x_i)^2$, em que $w_i$ e o peso da observacao. Quando a estrategia e `variancia_nivel`, $w_i=1/s^2_{y,x_i}$, o inverso da variancia experimental no nivel; as alternativas do pacote sao $1/|x_i|$, $1/x_i^2$, $1/|y_i|$ e $1/y_i^2$. WLS e considerado quando os testes e o grafico de variancia indicam heterocedasticidade. Os testes de variancia, falta de ajuste, curvatura, normalidade, independencia e influencia continuam sendo apresentados para verificar a adequacao do ajuste ponderado.
+
+O ajuste deste relatorio usa **`r toupper(ajuste$metodo)`**. A estrategia de pesos e **`r ajuste$estrategia_pesos`**.
+
+## Testes aplicados
+
+```{r descricao-testes}
+knitr::kable(rbind(homocedasticidade,linearidade,normalidade,independencia),digits=6,caption="Testes aplicados: hipotese nula, finalidade, resultado e decisao (alpha = 0,05)")
+```
+
+Para Grubbs, a hipotese nula e que nao existe residuo extremo; o teste e uma triagem para investigacao e nao autoriza exclusao automatica de dados. Para os testes de coeficientes, $H_0: \beta_j=0$ e $H_1: \beta_j\ne0$.
+
+# Modelo de regressao
+
+## Estimacao e pesos
+
+O modelo estimado foi $\hat y = `r formatC(stats::coef(ajuste$modelo)[1],digits=7,format="g",decimal.mark=",")` + (`r formatC(stats::coef(ajuste$modelo)[2],digits=7,format="g",decimal.mark=",")`)x$. O valor de $R^2$ e `r formatC(summary(ajuste$modelo)$r.squared,digits=5,format="f",decimal.mark=",")`; ele e descritivo e nao e usado isoladamente para aprovar a curva.
+
+```{r pesos}
+if(ajuste$metodo=="wls") knitr::kable(pesos_tabela,digits=6,caption="Pesos efetivamente usados no ajuste WLS") else cat("No ajuste OLS, todos os pesos sao iguais a 1; portanto, nao ha ponderacao das observacoes.")
+```
+
+## Coeficientes e testes t
 
 ```{r coeficientes}
-knitr::kable(as.data.frame(summary(ajuste$modelo)$coefficients), digits=6, caption="Coeficientes e testes t")
+knitr::kable(coeficientes,digits=6,caption=paste0("Coeficientes e testes t do modelo ",toupper(ajuste$metodo)))
 ```
 
-```{r curva, fig.cap='Curva de calibracao e limites de predicao'}
+```{r curva, fig.cap='Curva de calibracao, dados individuais, centroides e limites de predicao. A legenda esta na lateral.'}
 grafico_calibracao(ajuste)
 ```
 
-# Variancia, falta de ajuste e curvatura
+## Variancia, falta de ajuste e curvatura
 
 ```{r variancia-testes}
-knitr::kable(hetero, digits=6, caption="Testes de variancia")
-knitr::kable(rbind(teste("Falta de ajuste",diag$falta_ajuste),teste("Mandel",diag$mandel)), digits=6, caption="Linearidade")
+knitr::kable(homocedasticidade,digits=6,caption="Testes de homocedasticidade")
+knitr::kable(linearidade,digits=6,caption="Falta de ajuste e investigacao de curvatura")
 ```
 
-```{r variancia, fig.cap='Variabilidade por nivel'}
+```{r variancia, fig.cap='Variancia do sinal por nivel de concentracao. A legenda esta na lateral.'}
 grafico_variancia(ajuste)
 ```
 
-# Residuos, normalidade e independencia
+# Analise de residuos e influencia
+
+## Normalidade e independencia
 
 ```{r testes-residuos}
-knitr::kable(norm, digits=6, caption="Normalidade dos residuos")
-knitr::kable(indep, digits=6, caption="Independencia dos residuos")
+knitr::kable(normalidade,digits=6,caption="Testes de normalidade dos residuos")
+knitr::kable(independencia,digits=6,caption="Testes de independencia dos residuos")
 ```
 
-```{r residuos, fig.cap='Residuos padronizados'}
+```{r residuos, fig.cap='Residuos padronizados em funcao da concentracao. A legenda esta na lateral.'}
 grafico_residuos(ajuste)
 ```
 
-```{r qq, fig.cap='Grafico Q-Q com envelope normal'}
-grafico_qq(ajuste, semente=2026)
+```{r qq, fig.cap='Grafico Q-Q dos residuos padronizados, com envelope normal. A legenda esta na lateral.'}
+grafico_qq(ajuste,semente=2026)
 ```
 
-# Valores extremos e influencia
+## Valores extremos e influencia
 
 ```{r influencia}
-knitr::kable(teste("Grubbs",diag$grubbs), digits=6, caption="Teste de valor extremo")
-inf <- diag$influencia
-alerta <- inf$flag_cook | inf$flag_alavancagem | inf$flag_dffits | inf$flag_dfbeta | inf$flag_studentizado
-inf_relatorio <- inf[alerta, c("concentracao", "sinal", "residuo_studentizado", "alavancagem", "cook", "dffits")]
-if (!nrow(inf_relatorio)) inf_relatorio <- data.frame(mensagem="Nenhuma observacao atingiu os limites de triagem.")
-knitr::kable(inf_relatorio, digits=5, caption="Observacoes sinalizadas para investigacao")
+knitr::kable(teste("Grubbs",diag$grubbs,"nao ha residuo extremo","triagem de valor extremo"),digits=6,caption="Teste de Grubbs")
+knitr::kable(influencia[,colunas_inf],digits=5,caption="Diagnosticos de valores extremos e influencia para todas as observacoes")
+knitr::kable(investigar,digits=5,caption="Observacoes sinalizadas para investigacao")
 ```
 
-```{r influencia-grafico, fig.cap='Distancia de Cook e alavancagem'}
+```{r influencia-grafico, fig.cap='Distancia de Cook e alavancagem; linhas tracejadas sao limites de triagem e legendas estao na lateral.'}
 grafico_influencia(ajuste)
 ```
 
-# Retrocálculo, incerteza e conclusao
+## Retrocalculo e incerteza
 
 ```{r adequacao}
-knitr::kable(adequacao$criterios, digits=6, caption="Criterios de aceitacao")
-knitr::kable(adequacao$retrocalculo_por_nivel, digits=6, caption="Retrocalculo por nivel")
+knitr::kable(adequacao$criterios,digits=6,caption="Criterios de aceitacao informados")
+knitr::kable(adequacao$retrocalculo_por_nivel,digits=6,caption="Retrocalculo por nivel")
 ```
 
-```{r incerteza, fig.cap='Incerteza de predicao inversa'}
+```{r incerteza, fig.cap='Incerteza da predicao inversa para diferentes numeros de replicatas. A legenda esta na lateral.'}
 grafico_incerteza_predicao(ajuste)
 ```
 
+# Conclusao
+
 `r adequacao$conclusao`
 
-O relatorio nao transforma os dados e nao exclui observacoes automaticamente.
+Os resultados de cada teste devem ser interpretados conjuntamente com os graficos e com o conhecimento do metodo. Quando houver rejeicao de $H_0$ para heterocedasticidade, avaliar WLS ou outra estrategia de pesos tecnicamente justificada; para falta de ajuste ou Mandel, investigar reducao da faixa ou outro modelo; para residuos nao normais, dependencia ou observacoes influentes, revisar preparo de padroes, sequencia analitica, leitura instrumental e transcricao. Nenhuma dessas evidencias, isoladamente, determina exclusao automatica de observacoes.
