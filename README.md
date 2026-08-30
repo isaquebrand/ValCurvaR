@@ -23,10 +23,12 @@ de aprovar a faixa e o modelo continua documentada pelo laboratório.
 Kolmogorov-Smirnov com correcao de Lilliefors e Ryan-Joiner para os residuos;
 Brown-Forsythe, Breusch-Pagan, Goldfeld-Quandt e Cochran para variancia;
 Durbin-Watson e Breusch-Godfrey para independencia; e residuos padronizados e
-studentizados, alavancagem, Cook, DFFITS e DFBETAS para influencia.
+studentizados, alavancagem, Cook, DFFITS, DFBETAS e Grubbs para influencia.
 
 ```r
 diagnosticos$normalidade
+diagnosticos$cochran
+diagnosticos$grubbs
 diagnosticos$independencia
 grafico_qq(ajuste, semente = 2026)
 grafico_influencia(ajuste)

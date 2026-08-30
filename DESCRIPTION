@@ -22,6 +22,7 @@ Imports:
     grDevices,
     lmtest,
     nortest,
+    outliers,
     stats
 Suggests:
     knitr,

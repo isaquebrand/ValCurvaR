@@ -7,6 +7,8 @@ test_that("advanced diagnostics are available for a replicated calibration curve
   expect_true(all(c("residuo_studentizado", "dffits", "dfbeta_intercepto", "dfbeta_inclinacao") %in% names(z$influencia)))
   expect_true(is.list(z$homocedasticidade))
   expect_true(is.list(z$cochran))
+  expect_true(is.list(z$grubbs))
+  expect_true(is.finite(z$grubbs$estatistica))
 })
 
 test_that("sensitivity analysis preserves the original adjustment", {

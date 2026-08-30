@@ -21,6 +21,7 @@ diagnosticar_curva <- function(ajuste) {
   bp <- .breusch_pagan(fit)
   gq <- .goldfeld_quandt(fit)
   cochran <- .cochran_test(data$.y, data$.x)
+  grubbs <- .grubbs_test(residuals)
   lof <- .lack_of_fit(fit, data)
   quadratic <- .mandel_test(fit, data)
   normality <- .normality_tests(residuals)
@@ -31,6 +32,7 @@ diagnosticar_curva <- function(ajuste) {
     breusch_pagan = bp,
     goldfeld_quandt = gq,
     cochran = cochran,
+    grubbs = grubbs,
     falta_ajuste = lof,
     mandel = quadratic,
     influencia = data.frame(concentracao = data$.x, sinal = data$.y,
@@ -44,7 +46,7 @@ diagnosticar_curva <- function(ajuste) {
                              flag_studentizado = abs(studentized) > stats::qt(.975, stats::df.residual(fit))),
     normalidade = normality,
     independencia = independence,
-    avisos = .diagnostic_messages(bf, bp, gq, cochran, lof, quadratic, cooks, studentized, n)
+    avisos = .diagnostic_messages(bf, bp, gq, cochran, grubbs, lof, quadratic, cooks, studentized, n)
   )
 }
 
@@ -104,6 +106,15 @@ diagnosticar_curva <- function(ajuste) {
        valor_critico_5_percentual = critical(.05), variancias_por_nivel = vars)
 }
 
+.grubbs_test <- function(residuals) {
+  if (length(residuals) < 3L) return(list(disponivel = FALSE, mensagem = "Grubbs requer ao menos tres residuos."))
+  z <- outliers::grubbs.test(residuals, type = 10, opposite = FALSE)
+  indice <- which.max(abs(residuals - mean(residuals)))
+  list(disponivel = TRUE, estatistica = unname(z$statistic[[1]]), p_valor = unname(z$p.value),
+       observacao = indice, residuo = residuals[indice], alternativa = z$alternative,
+       nota = "Resultado para investigacao; nao exclua observacoes automaticamente.")
+}
+
 .independence_tests <- function(fit) {
   n <- length(stats::residuals(fit))
   dw <- tryCatch(lmtest::dwtest(fit), error = function(e) e)
@@ -158,13 +169,14 @@ diagnosticar_curva <- function(ajuste) {
        modelo_quadratico = quad)
 }
 
-.diagnostic_messages <- function(bf, bp, gq, cochran, lof, mandel, cooks, studentized, n) {
+.diagnostic_messages <- function(bf, bp, gq, cochran, grubbs, lof, mandel, cooks, studentized, n) {
   result <- character()
   if (isTRUE(bf$disponivel) && is.finite(bf$p_valor) && bf$p_valor < .05)
     result <- c(result, "Ha evidencia de heterocedasticidade; compare OLS e WLS.")
   if (isTRUE(bp$disponivel) && bp$p_valor < .05) result <- c(result, "Breusch-Pagan indica variancia nao constante.")
   if (isTRUE(gq$disponivel) && gq$p_valor < .05) result <- c(result, "Goldfeld-Quandt indica variancia nao constante ao longo da concentracao.")
   if (isTRUE(cochran$disponivel) && is.finite(cochran$p_valor_aproximado) && cochran$p_valor_aproximado < .05) result <- c(result, "Cochran indica uma variancia de nivel desproporcionalmente alta.")
+  if (isTRUE(grubbs$disponivel) && is.finite(grubbs$p_valor) && grubbs$p_valor < .05) result <- c(result, "Grubbs indica um residuo extremo; investigue a causa antes de qualquer exclusao.")
   if (isTRUE(lof$disponivel) && is.finite(lof$p_valor) && lof$p_valor < .05)
     result <- c(result, "Ha evidencia de falta de ajuste linear; investigue a faixa ou a curvatura.")
   if (isTRUE(mandel$disponivel) && is.finite(mandel$p_valor) && mandel$p_valor < .05)
